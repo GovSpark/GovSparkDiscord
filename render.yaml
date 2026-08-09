@@ -14,11 +14,13 @@ services:
         sync: false
       - key: RECORDING_RESULT_CHANNEL_NAME
         sync: false
-      - key: GOOGLE_CLIENT_ID
+      - key: R2_ENDPOINT
         sync: false
-      - key: GOOGLE_CLIENT_SECRET
+      - key: R2_ACCESS_KEY_ID
         sync: false
-      - key: GOOGLE_REFRESH_TOKEN
+      - key: R2_SECRET_ACCESS_KEY
         sync: false
-      - key: GOOGLE_DRIVE_FOLDER_ID
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_BASE_URL
         sync: false

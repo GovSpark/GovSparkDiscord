@@ -13,12 +13,13 @@ import { createRecordingDirectory, mixTracks, outputFilePath, PcmTrack, removeRe
 import { RecordingStorage } from './storage.js';
 import { formatDuration, recordingFileName } from './util.js';
 import { buildInitialRecordingEmbed, buildMeetingNotesButton } from './meeting-notes.js';
+import { playVoiceCue, type VoiceCueName } from './voice-cue.js';
 
 type StreamHandle = { destroy(): void };
 
 export class RecordingSession {
-  readonly startedAt = new Date();
-  private readonly startedAtMs = this.startedAt.getTime();
+  private startedAt = new Date();
+  private startedAtMs = this.startedAt.getTime();
   private readonly tracks = new Map<string, PcmTrack>();
   private readonly streams: StreamHandle[] = [];
   private readonly directoryPromise: Promise<string>;
@@ -34,7 +35,7 @@ export class RecordingSession {
     private readonly config: Config,
     private readonly storage: RecordingStorage,
   ) {
-    this.directoryPromise = createRecordingDirectory(`${this.startedAt.getTime()}-${voiceChannel.id}`);
+    this.directoryPromise = createRecordingDirectory(`${Date.now()}-${voiceChannel.id}`);
   }
 
   async start(): Promise<void> {
@@ -44,9 +45,12 @@ export class RecordingSession {
         guildId: this.guildId,
         adapterCreator: this.voiceChannel.guild.voiceAdapterCreator,
         selfDeaf: false,
-        selfMute: true,
+        selfMute: false,
       });
       await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
+      await this.playCueSafely('start.wav');
+      this.startedAt = new Date();
+      this.startedAtMs = this.startedAt.getTime();
       this.connection.receiver.speaking.on('start', this.onSpeakingStart);
       for (const [userId, member] of this.voiceChannel.members) {
         if (!member.user.bot) void this.subscribeUser(userId);
@@ -65,6 +69,7 @@ export class RecordingSession {
     try {
       this.connection?.receiver.speaking.off('start', this.onSpeakingStart);
       for (const stream of this.streams) stream.destroy();
+      if (reason === 'command') await this.playCueSafely('stop.wav');
       await Promise.all([...this.tracks.values()].map((track) => track.close(durationMs)));
 
       const mp3Path = outputFilePath(directory);
@@ -92,7 +97,7 @@ export class RecordingSession {
       console.info(`Recording saved (${reason}): ${fileName}`);
     } catch (error) {
       console.error('Recording finalization failed', error);
-      await this.resultChannel.send('録音の変換または Google Drive へのアップロードに失敗しました。管理者は Bot のログを確認してください。').catch(console.error);
+      await this.resultChannel.send('録音の変換または Cloudflare R2 へのアップロードに失敗しました。管理者は Bot のログを確認してください。').catch(console.error);
       throw error;
     } finally {
       this.connection?.destroy();
@@ -115,6 +120,15 @@ export class RecordingSession {
     if (this.stopping || userId === this.botUserId || this.tracks.has(userId) || !this.connection) return;
     void this.subscribeUser(userId);
   };
+
+  private async playCueSafely(name: VoiceCueName): Promise<void> {
+    if (!this.connection) return;
+    try {
+      await playVoiceCue(this.connection, name);
+    } catch (error) {
+      console.warn(`Could not play ${name}; continuing the recording workflow.`, error);
+    }
+  }
 
   private async subscribeUser(userId: string): Promise<void> {
     try {

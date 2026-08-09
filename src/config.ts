@@ -5,11 +5,12 @@ export interface Config {
   applicationId: string;
   guildId: string;
   resultChannelName: string;
-  googleDrive: {
-    clientId: string;
-    clientSecret: string;
-    refreshToken: string;
-    folderId: string;
+  r2: {
+    endpoint: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    bucketName: string;
+    publicBaseUrl: string;
   };
   port: number;
   ffmpegPath: string;
@@ -31,11 +32,12 @@ export function getConfig(): Config {
     applicationId: required('DISCORD_APPLICATION_ID'),
     guildId: required('DISCORD_GUILD_ID'),
     resultChannelName: required('RECORDING_RESULT_CHANNEL_NAME'),
-    googleDrive: {
-      clientId: required('GOOGLE_CLIENT_ID'),
-      clientSecret: required('GOOGLE_CLIENT_SECRET'),
-      refreshToken: required('GOOGLE_REFRESH_TOKEN'),
-      folderId: required('GOOGLE_DRIVE_FOLDER_ID'),
+    r2: {
+      endpoint: required('R2_ENDPOINT').replace(/\/$/, ''),
+      accessKeyId: required('R2_ACCESS_KEY_ID'),
+      secretAccessKey: required('R2_SECRET_ACCESS_KEY'),
+      bucketName: required('R2_BUCKET_NAME'),
+      publicBaseUrl: required('R2_PUBLIC_BASE_URL').replace(/\/$/, ''),
     },
     port,
     ffmpegPath: process.env.FFMPEG_PATH?.trim() || 'ffmpeg',

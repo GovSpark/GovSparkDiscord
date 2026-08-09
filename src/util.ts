@@ -11,3 +11,8 @@ export function recordingFileName(startedAt: Date, voiceChannelId: string): stri
   const stamp = iso.replace(/[:.]/g, '-');
   return `recording-${stamp}-${voiceChannelId}.mp3`;
 }
+
+export function publicObjectUrl(baseUrl: string, key: string): string {
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+  return `${baseUrl.replace(/\/$/, '')}/${encodedKey}`;
+}

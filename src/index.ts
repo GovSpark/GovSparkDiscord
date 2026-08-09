@@ -48,18 +48,8 @@ function resultChannel(): TextChannel {
 client.once(Events.ClientReady, (readyClient) => {
   try {
     resultChannel();
-    const storage = new RecordingStorage(config.googleDrive);
+    const storage = new RecordingStorage(config.r2);
     manager = new RecordingManager(config, storage, resultChannel, readyClient.user.id);
-    const cleanup = async (): Promise<void> => {
-      try {
-        const deleted = await storage.cleanupExpiredRecordings();
-        if (deleted > 0) console.info(`Deleted ${deleted} expired Google Drive recording(s).`);
-      } catch (error) {
-        console.error('Google Drive retention cleanup failed', error);
-      }
-    };
-    void cleanup();
-    setInterval(() => { void cleanup(); }, 24 * 60 * 60 * 1_000).unref();
     console.info(`Ready as ${readyClient.user.tag}`);
   } catch (error) {
     console.error('Bot startup validation failed', error);
@@ -111,7 +101,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     await interaction.deferReply({ ephemeral: true });
     await activeManager.stop('command');
-    await interaction.editReply('録音を終了し、Google Drive への保存を完了しました。');
+    await interaction.editReply('録音を終了し、Cloudflare R2 への保存を完了しました。');
   } catch (error) {
     console.error('Command failed', error);
     const message = error instanceof Error ? error.message : '予期しないエラーが発生しました。';

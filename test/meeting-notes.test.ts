@@ -15,19 +15,19 @@ test('initial recording embed contains only base fields and recording link', () 
   const embed = buildInitialRecordingEmbed({
     duration: '01:00:00',
     startedByUserId: userId,
-    recordingUrl: 'https://drive.google.com/file/d/example/view',
+    recordingUrl: 'https://recordings.example.com/recordings/example.mp3',
   }).toJSON();
 
   assert.equal(embed.title, 'VC録音結果');
   assert.equal(embed.fields?.length, 2);
-  assert.match(embed.description ?? '', /Google Drive/);
+  assert.match(embed.description ?? '', /録音を再生/);
 });
 
 test('completed embed adds the three meeting note fields', () => {
   const initial = buildInitialRecordingEmbed({
     duration: '01:00:00',
     startedByUserId: userId,
-    recordingUrl: 'https://drive.google.com/file/d/example/view',
+    recordingUrl: 'https://recordings.example.com/recordings/example.mp3',
   }).toJSON();
   const completed = buildCompletedRecordingEmbed(initial, {
     summary: '機能設計を確認した',

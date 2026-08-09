@@ -36,7 +36,7 @@ export function buildInitialRecordingEmbed(input: {
     .setColor(0x5865f2)
     .setTitle('VC録音結果')
     .setURL(input.recordingUrl)
-    .setDescription(`[録音をGoogle Driveで再生](${input.recordingUrl})`)
+    .setDescription(`[録音を再生](${input.recordingUrl})`)
     .addFields(
       { name: '録音時間', value: input.duration, inline: true },
       { name: '録音を開始した人', value: `<@${input.startedByUserId}>`, inline: true },
