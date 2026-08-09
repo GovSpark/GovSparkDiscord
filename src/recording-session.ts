@@ -47,7 +47,17 @@ export class RecordingSession {
         selfDeaf: false,
         selfMute: false,
       });
-      await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
+      this.connection.on('stateChange', (oldState, newState) => {
+        if (oldState.status !== newState.status) {
+          console.info(
+            `Voice connection state changed for guild ${this.guildId}: ${oldState.status} -> ${newState.status}`,
+          );
+        }
+      });
+      this.connection.on('error', (error) => {
+        console.error(`Voice connection error for guild ${this.guildId}`, error);
+      });
+      await entersState(this.connection, VoiceConnectionStatus.Ready, 30_000);
       await this.playCueSafely('start.wav');
       this.startedAt = new Date();
       this.startedAtMs = this.startedAt.getTime();
@@ -56,8 +66,15 @@ export class RecordingSession {
         if (!member.user.bot) void this.subscribeUser(userId);
       }
     } catch (error) {
+      console.error(
+        `Could not establish a ready voice connection to channel ${this.voiceChannel.id} in guild ${this.guildId}`,
+        error,
+      );
       this.connection?.destroy();
-      throw new Error('ボイスチャンネルへ接続できませんでした。Bot の閲覧・接続権限を確認してください。', { cause: error });
+      throw new Error(
+        'ボイスチャンネルの音声接続を確立できませんでした。Bot の閲覧・接続・発言権限と Render のログを確認してください。',
+        { cause: error },
+      );
     }
   }
 

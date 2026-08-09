@@ -13,7 +13,7 @@ Discord のボイスチャンネルを録音し、MP3 を Cloudflare R2 に保�
 
 ## セットアップ
 
-1. Node.js 20 以上と FFmpeg を用意します。
+1. Node.js 22.12 以上と FFmpeg を用意します。
 2. Cloudflare R2でバケットを作成し、Object Read & Write権限のR2 APIトークンを発行します。
 3. バケットの公開アクセスを有効化し、`recordings/`を90日後に削除するライフサイクルルールを設定します。
 4. `cp .env.example .env` を実行し、R2のEndpoint、Access Key ID、Secret Access Key、バケット名、公開URLを設定します。
