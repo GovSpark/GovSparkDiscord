@@ -17,7 +17,15 @@ export class TaskReminderManager {
   ) {}
 
   async start(): Promise<void> {
-    await this.restoreFromResultChannel();
+    try {
+      await this.restoreFromResultChannel();
+    } catch (error) {
+      console.warn(
+        'Could not restore task reminders from the result channel. ' +
+        'Grant the Bot View Channel and Read Message History permissions. Starting without restored reminders.',
+        error,
+      );
+    }
     await this.checkDueTasks();
     this.timer = setInterval(() => void this.checkDueTasks(), CHECK_INTERVAL_MS);
     this.timer.unref();
