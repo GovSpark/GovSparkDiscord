@@ -14,6 +14,7 @@ import { RecordingStorage } from './storage.js';
 import { formatDuration, recordingFileName } from './util.js';
 import { buildInitialRecordingEmbed, buildMeetingNotesButton } from './meeting-notes.js';
 import { playVoiceCue, type VoiceCueName } from './voice-cue.js';
+import { buildStatusEmbed } from './status-embed.js';
 
 type StreamHandle = { destroy(): void };
 
@@ -102,19 +103,33 @@ export class RecordingSession {
       });
       try {
         await this.startedBy.send({
-          content: '録音が完了しました。以下のボタンから、今回のVCの内容を入力してください。',
+          embeds: [buildStatusEmbed(
+            '会議内容を入力してください',
+            '録音が完了しました。以下のボタンから、今回のVCの内容を入力してください。',
+            'info',
+          )],
           components: [buildMeetingNotesButton(resultMessage.id, this.startedBy.id)],
         });
       } catch (error) {
         console.warn(`Could not send meeting notes DM to ${this.startedBy.id}`, error);
         await resultMessage.edit({
-          content: `<@${this.startedBy.id}> DMを送信できませんでした。DMの受信設定を確認してください。`,
+          content: `<@${this.startedBy.id}>`,
+          embeds: [
+            ...resultMessage.embeds,
+            buildStatusEmbed('DMを送信できませんでした', 'DMの受信設定を確認してください。', 'warning'),
+          ],
         }).catch(console.error);
       }
       console.info(`Recording saved (${reason}): ${fileName}`);
     } catch (error) {
       console.error('Recording finalization failed', error);
-      await this.resultChannel.send('録音の変換または Cloudflare R2 へのアップロードに失敗しました。管理者は Bot のログを確認してください。').catch(console.error);
+      await this.resultChannel.send({
+        embeds: [buildStatusEmbed(
+          '録音の保存に失敗しました',
+          '録音の変換または Cloudflare R2 へのアップロードに失敗しました。管理者は Bot のログを確認してください。',
+          'error',
+        )],
+      }).catch(console.error);
       throw error;
     } finally {
       this.connection?.destroy();
@@ -130,7 +145,13 @@ export class RecordingSession {
     this.connection?.destroy();
     const directory = await this.directoryPromise;
     await removeRecordingDirectory(directory).catch(console.error);
-    await this.resultChannel.send('Render の再起動またはデプロイにより、進行中の録音を中断しました。未保存の音声は破棄されました。').catch(console.error);
+    await this.resultChannel.send({
+      embeds: [buildStatusEmbed(
+        '録音を中断しました',
+        'Render の再起動またはデプロイにより、進行中の録音を中断しました。未保存の音声は破棄されました。',
+        'warning',
+      )],
+    }).catch(console.error);
   }
 
   private onSpeakingStart = (userId: string): void => {

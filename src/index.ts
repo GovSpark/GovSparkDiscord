@@ -3,6 +3,7 @@ import {
   ChannelType,
   Events,
   GatewayIntentBits,
+  MessageFlags,
   TextChannel,
   type ButtonInteraction,
   type ModalSubmitInteraction,
@@ -21,6 +22,7 @@ import {
   validateMeetingNotes,
 } from './meeting-notes.js';
 import { registerGuildCommands } from './commands.js';
+import { buildStatusEmbed } from './status-embed.js';
 
 const config = getConfig();
 const client = new Client({
@@ -65,19 +67,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await handleMeetingNotesInteraction(interaction, customId).catch(async (error) => {
       console.error('Meeting notes interaction failed', error);
       const message = error instanceof Error ? error.message : '会議内容の更新中にエラーが発生しました。';
-      if (interaction.replied || interaction.deferred) await interaction.editReply(message).catch(console.error);
-      else await interaction.reply({ content: message }).catch(console.error);
+      const response = { embeds: [buildStatusEmbed('会議内容の更新エラー', message, 'error')] };
+      if (interaction.replied || interaction.deferred) await interaction.editReply(response).catch(console.error);
+      else await interaction.reply(response).catch(console.error);
     });
     return;
   }
 
   if (!interaction.isChatInputCommand() || !['start', 'stop'].includes(interaction.commandName)) return;
   if (!interaction.guildId || interaction.guildId !== config.guildId) {
-    await interaction.reply({ content: 'この Bot は設定済みの Discord サーバーでのみ利用できます。', ephemeral: true });
+    await interaction.reply({
+      embeds: [buildStatusEmbed('利用できないサーバー', 'この Bot は設定済みの Discord サーバーでのみ利用できます。', 'error')],
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
   if (!manager) {
-    await interaction.reply({ content: 'Bot はまだ利用可能な状態ではありません。', ephemeral: true });
+    await interaction.reply({
+      embeds: [buildStatusEmbed('準備中', 'Bot はまだ利用可能な状態ではありません。', 'warning')],
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
   const activeManager = manager;
@@ -86,28 +95,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.commandName === 'start') {
       const channel = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channel;
       if (!channel) {
-        await interaction.reply({ content: '録音を開始するには、先にボイスチャンネルへ参加してください。', ephemeral: true });
+        await interaction.reply({
+          embeds: [buildStatusEmbed('録音を開始できません', '録音を開始するには、先にボイスチャンネルへ参加してください。', 'error')],
+          flags: MessageFlags.Ephemeral,
+        });
         return;
       }
       await interaction.deferReply();
       await activeManager.start(interaction.guildId, channel, interaction.user);
-      await interaction.editReply(`録音を開始しました。対象 VC: **${channel.name}**\nこの VC は録音中です。`);
+      await interaction.editReply({
+        embeds: [buildStatusEmbed('録音を開始しました', `対象 VC: **${channel.name}**\nこの VC は録音中です。`, 'success')],
+      });
       return;
     }
 
     const channel = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channel;
     if (!channel || channel.id !== activeManager.activeVoiceChannelId) {
-      await interaction.reply({ content: '録音を停止するには、録音中のボイスチャンネルに参加してください。', ephemeral: true });
+      await interaction.reply({
+        embeds: [buildStatusEmbed('録音を停止できません', '録音を停止するには、録音中のボイスチャンネルに参加してください。', 'error')],
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await activeManager.stop('command');
-    await interaction.editReply('録音を終了し、Cloudflare R2 への保存を完了しました。');
+    await interaction.editReply({
+      embeds: [buildStatusEmbed('録音を終了しました', 'Cloudflare R2 への保存を完了しました。', 'success')],
+    });
   } catch (error) {
     console.error('Command failed', error);
     const message = error instanceof Error ? error.message : '予期しないエラーが発生しました。';
-    if (interaction.deferred || interaction.replied) await interaction.editReply(message);
-    else await interaction.reply({ content: message, ephemeral: true });
+    const response = { embeds: [buildStatusEmbed('コマンド実行エラー', message, 'error')] };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(response);
+    else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral });
   }
 });
 
@@ -116,7 +136,9 @@ async function handleMeetingNotesInteraction(
   customId: NonNullable<ReturnType<typeof parseMeetingNotesCustomId>>,
 ): Promise<void> {
   if (interaction.user.id !== customId.startedByUserId) {
-    await interaction.reply({ content: 'この会議内容を入力できるのは、録音を開始したユーザーだけです。' });
+    await interaction.reply({
+      embeds: [buildStatusEmbed('入力できません', 'この会議内容を入力できるのは、録音を開始したユーザーだけです。', 'error')],
+    });
     return;
   }
 
@@ -140,7 +162,9 @@ async function handleMeetingNotesInteraction(
 
   const updatedEmbed = buildCompletedRecordingEmbed(resultMessage.embeds[0].toJSON(), notes);
   await resultMessage.edit({ embeds: [updatedEmbed] });
-  await interaction.reply({ content: '会議内容を録音結果へ反映しました。再入力すると内容を上書きできます。' });
+  await interaction.reply({
+    embeds: [buildStatusEmbed('会議内容を更新しました', '会議内容を録音結果へ反映しました。再入力すると内容を上書きできます。', 'success')],
+  });
 }
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
