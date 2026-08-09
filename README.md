@@ -7,6 +7,7 @@ Discord のボイスチャンネルを録音し、MP3 を Google Drive に保存
 - VC 参加者の `/start` で、その VC の録音を開始します。
 - `/stop`、または全参加者の退出で録音を停止します。
 - 音声を単一 MP3 にミックスして Google Drive へアップロードし、指定テキストチャンネルに共有 URL を投稿します。
+- 録音開始者へDMを送り、会議の概要・決定事項・次の対応を結果Embedへ追記できます。
 - 同時録音は 1 件だけです。Bot が作成した録音は 90 日後に自動削除します。
 
 ## セットアップ
@@ -18,7 +19,7 @@ Discord のボイスチャンネルを録音し、MP3 を Google Drive に保存
 5. `npm install && npm run register-commands` を実行します。
 6. `npm run dev`（開発）または `npm run build && npm start`（本番）を実行します。
 
-Bot に VC の閲覧・接続、結果チャンネルへの送信権限を付与してください。この Bot が使う Gateway Intent に Privileged Intent の有効化は不要です。
+Bot に VC の閲覧・接続、結果チャンネルへの送信・メッセージ履歴を読む権限を付与してください。この Bot が使う Gateway Intent に Privileged Intent の有効化は不要です。
 
 ## Render
 

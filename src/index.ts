@@ -1,8 +1,25 @@
-import { Client, ChannelType, Events, GatewayIntentBits, TextChannel } from 'discord.js';
+import {
+  Client,
+  ChannelType,
+  Events,
+  GatewayIntentBits,
+  TextChannel,
+  type ButtonInteraction,
+  type ModalSubmitInteraction,
+} from 'discord.js';
 import { getConfig } from './config.js';
 import { RecordingManager } from './recording-session.js';
 import { RecordingStorage } from './storage.js';
 import { closeWebServer, startWebServer } from './web-server.js';
+import {
+  buildCompletedRecordingEmbed,
+  buildMeetingNotesModal,
+  MEETING_ACTIONS_INPUT_ID,
+  MEETING_DECISIONS_INPUT_ID,
+  MEETING_SUMMARY_INPUT_ID,
+  parseMeetingNotesCustomId,
+  validateMeetingNotes,
+} from './meeting-notes.js';
 
 const config = getConfig();
 const client = new Client({
@@ -51,6 +68,18 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton() || interaction.isModalSubmit()) {
+    const customId = parseMeetingNotesCustomId(interaction.customId);
+    if (!customId) return;
+    await handleMeetingNotesInteraction(interaction, customId).catch(async (error) => {
+      console.error('Meeting notes interaction failed', error);
+      const message = error instanceof Error ? error.message : '会議内容の更新中にエラーが発生しました。';
+      if (interaction.replied || interaction.deferred) await interaction.editReply(message).catch(console.error);
+      else await interaction.reply({ content: message }).catch(console.error);
+    });
+    return;
+  }
+
   if (!interaction.isChatInputCommand() || !['start', 'stop'].includes(interaction.commandName)) return;
   if (!interaction.guildId || interaction.guildId !== config.guildId) {
     await interaction.reply({ content: 'この Bot は設定済みの Discord サーバーでのみ利用できます。', ephemeral: true });
@@ -70,7 +99,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       await interaction.deferReply();
-      await activeManager.start(interaction.guildId, channel);
+      await activeManager.start(interaction.guildId, channel, interaction.user);
       await interaction.editReply(`録音を開始しました。対象 VC: **${channel.name}**\nこの VC は録音中です。`);
       return;
     }
@@ -90,6 +119,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
     else await interaction.reply({ content: message, ephemeral: true });
   }
 });
+
+async function handleMeetingNotesInteraction(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  customId: NonNullable<ReturnType<typeof parseMeetingNotesCustomId>>,
+): Promise<void> {
+  if (interaction.user.id !== customId.startedByUserId) {
+    await interaction.reply({ content: 'この会議内容を入力できるのは、録音を開始したユーザーだけです。' });
+    return;
+  }
+
+  if (interaction.isButton()) {
+    if (customId.action !== 'open') throw new Error('入力ボタンの情報が正しくありません。');
+    await interaction.showModal(buildMeetingNotesModal(customId.resultMessageId, customId.startedByUserId));
+    return;
+  }
+
+  if (customId.action !== 'submit') throw new Error('入力フォームの情報が正しくありません。');
+  const notes = validateMeetingNotes({
+    summary: interaction.fields.getTextInputValue(MEETING_SUMMARY_INPUT_ID),
+    decisions: interaction.fields.getTextInputValue(MEETING_DECISIONS_INPUT_ID),
+    nextActions: interaction.fields.getTextInputValue(MEETING_ACTIONS_INPUT_ID),
+  });
+  const channel = resultChannel();
+  const resultMessage = await channel.messages.fetch(customId.resultMessageId).catch(() => undefined);
+  if (!resultMessage || resultMessage.author.id !== client.user?.id || !resultMessage.embeds[0]) {
+    throw new Error('録音結果メッセージが削除されたか、取得できませんでした。');
+  }
+
+  const updatedEmbed = buildCompletedRecordingEmbed(resultMessage.embeds[0].toJSON(), notes);
+  await resultMessage.edit({ embeds: [updatedEmbed] });
+  await interaction.reply({ content: '会議内容を録音結果へ反映しました。再入力すると内容を上書きできます。' });
+}
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   const activeManager = manager;

@@ -6,12 +6,13 @@ import {
   VoiceConnection,
   VoiceConnectionStatus,
 } from '@discordjs/voice';
-import type { TextChannel, VoiceBasedChannel } from 'discord.js';
+import type { TextChannel, User, VoiceBasedChannel } from 'discord.js';
 import prism from 'prism-media';
 import type { Config } from './config.js';
 import { createRecordingDirectory, mixTracks, outputFilePath, PcmTrack, removeRecordingDirectory, trackFilePath } from './audio.js';
 import { RecordingStorage } from './storage.js';
 import { formatDuration, recordingFileName } from './util.js';
+import { buildInitialRecordingEmbed, buildMeetingNotesButton } from './meeting-notes.js';
 
 type StreamHandle = { destroy(): void };
 
@@ -28,6 +29,7 @@ export class RecordingSession {
     readonly guildId: string,
     readonly voiceChannel: VoiceBasedChannel,
     private readonly botUserId: string,
+    private readonly startedBy: User,
     private readonly resultChannel: TextChannel,
     private readonly config: Config,
     private readonly storage: RecordingStorage,
@@ -69,10 +71,24 @@ export class RecordingSession {
       await mixTracks(this.config.ffmpegPath, [...this.tracks.values()], durationMs, mp3Path);
       const fileName = recordingFileName(this.startedAt, this.voiceChannel.id);
       const url = await this.storage.uploadWithRetry(mp3Path, fileName);
-      await this.resultChannel.send(
-        `録音を終了しました。録音時間：${formatDuration(durationMs)}　${url}\n` +
-        'この URL は公開されています。リンクを知る第三者もアクセスできます。',
-      );
+      const resultMessage = await this.resultChannel.send({
+        embeds: [buildInitialRecordingEmbed({
+          duration: formatDuration(durationMs),
+          startedByUserId: this.startedBy.id,
+          recordingUrl: url,
+        })],
+      });
+      try {
+        await this.startedBy.send({
+          content: '録音が完了しました。以下のボタンから、今回のVCの内容を入力してください。',
+          components: [buildMeetingNotesButton(resultMessage.id, this.startedBy.id)],
+        });
+      } catch (error) {
+        console.warn(`Could not send meeting notes DM to ${this.startedBy.id}`, error);
+        await resultMessage.edit({
+          content: `<@${this.startedBy.id}> DMを送信できませんでした。DMの受信設定を確認してください。`,
+        }).catch(console.error);
+      }
       console.info(`Recording saved (${reason}): ${fileName}`);
     } catch (error) {
       console.error('Recording finalization failed', error);
@@ -138,9 +154,17 @@ export class RecordingManager {
     return this.active?.voiceChannel.id;
   }
 
-  async start(guildId: string, channel: VoiceBasedChannel): Promise<void> {
+  async start(guildId: string, channel: VoiceBasedChannel, startedBy: User): Promise<void> {
     if (this.active || getVoiceConnection(guildId)) throw new Error('このサーバーでは、すでに別の録音が進行中です。');
-    const session = new RecordingSession(guildId, channel, this.botUserId, this.getResultChannel(), this.config, this.storage);
+    const session = new RecordingSession(
+      guildId,
+      channel,
+      this.botUserId,
+      startedBy,
+      this.getResultChannel(),
+      this.config,
+      this.storage,
+    );
     this.active = session;
     try {
       await session.start();
