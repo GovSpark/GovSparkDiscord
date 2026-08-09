@@ -1,0 +1,114 @@
+import { Client, ChannelType, Events, GatewayIntentBits, TextChannel } from 'discord.js';
+import { getConfig } from './config.js';
+import { RecordingManager } from './recording-session.js';
+import { RecordingStorage } from './storage.js';
+
+const config = getConfig();
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+});
+
+let manager: RecordingManager | undefined;
+
+function resultChannel(): TextChannel {
+  const guild = client.guilds.cache.get(config.guildId);
+  if (!guild) throw new Error(`対象 Guild (${config.guildId}) がキャッシュにありません。`);
+  const matches = guild.channels.cache.filter(
+    (channel): channel is TextChannel => channel.type === ChannelType.GuildText && channel.name === config.resultChannelName,
+  );
+  if (matches.size !== 1) {
+    throw new Error(`結果チャンネル名「${config.resultChannelName}」は、テキストチャンネルとして 1 件だけ必要です（現在 ${matches.size} 件）。`);
+  }
+  return matches.first()!;
+}
+
+client.once(Events.ClientReady, (readyClient) => {
+  try {
+    resultChannel();
+    const storage = new RecordingStorage(config.googleDrive);
+    manager = new RecordingManager(config, storage, resultChannel, readyClient.user.id);
+    const cleanup = async (): Promise<void> => {
+      try {
+        const deleted = await storage.cleanupExpiredRecordings();
+        if (deleted > 0) console.info(`Deleted ${deleted} expired Google Drive recording(s).`);
+      } catch (error) {
+        console.error('Google Drive retention cleanup failed', error);
+      }
+    };
+    void cleanup();
+    setInterval(() => { void cleanup(); }, 24 * 60 * 60 * 1_000).unref();
+    console.info(`Ready as ${readyClient.user.tag}`);
+  } catch (error) {
+    console.error('Bot startup validation failed', error);
+    readyClient.destroy();
+    process.exitCode = 1;
+  }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand() || !['start', 'stop'].includes(interaction.commandName)) return;
+  if (!interaction.guildId || interaction.guildId !== config.guildId) {
+    await interaction.reply({ content: 'この Bot は設定済みの Discord サーバーでのみ利用できます。', ephemeral: true });
+    return;
+  }
+  if (!manager) {
+    await interaction.reply({ content: 'Bot はまだ利用可能な状態ではありません。', ephemeral: true });
+    return;
+  }
+  const activeManager = manager;
+
+  try {
+    if (interaction.commandName === 'start') {
+      const channel = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channel;
+      if (!channel) {
+        await interaction.reply({ content: '録音を開始するには、先にボイスチャンネルへ参加してください。', ephemeral: true });
+        return;
+      }
+      await interaction.deferReply();
+      await activeManager.start(interaction.guildId, channel);
+      await interaction.editReply(`録音を開始しました。対象 VC: **${channel.name}**\nこの VC は録音中です。`);
+      return;
+    }
+
+    const channel = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channel;
+    if (!channel || channel.id !== activeManager.activeVoiceChannelId) {
+      await interaction.reply({ content: '録音を停止するには、録音中のボイスチャンネルに参加してください。', ephemeral: true });
+      return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    await activeManager.stop('command');
+    await interaction.editReply('録音を終了し、Google Drive への保存を完了しました。');
+  } catch (error) {
+    console.error('Command failed', error);
+    const message = error instanceof Error ? error.message : '予期しないエラーが発生しました。';
+    if (interaction.deferred || interaction.replied) await interaction.editReply(message);
+    else await interaction.reply({ content: message, ephemeral: true });
+  }
+});
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  const activeManager = manager;
+  if (!activeManager?.isRecording) return;
+  const activeId = activeManager.activeVoiceChannelId;
+  if (oldState.channelId !== activeId && newState.channelId !== activeId) return;
+  const channel = newState.guild.channels.cache.get(activeId!);
+  if (!channel?.isVoiceBased()) return;
+  const humanMembers = channel.members.filter((member) => !member.user.bot);
+  if (humanMembers.size === 0) {
+    void activeManager.stop('empty').catch((error) => console.error('Automatic stop failed', error));
+  }
+});
+
+async function shutdown(signal: string): Promise<void> {
+  console.info(`Received ${signal}; aborting active recording.`);
+  await manager?.abortForRestart();
+  client.destroy();
+}
+
+process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.once('SIGINT', () => { void shutdown('SIGINT'); });
+
+client.login(config.discordToken).catch((error) => {
+  console.error('Discord login failed', error);
+  process.exitCode = 1;
+});
