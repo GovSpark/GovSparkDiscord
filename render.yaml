@@ -1,9 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: govspark-discord-recorder
     runtime: docker
-    plan: starter
+    plan: free
     autoDeploy: true
+    healthCheckPath: /healthz
     envVars:
       - key: DISCORD_TOKEN
         sync: false

@@ -2,6 +2,7 @@ import { Client, ChannelType, Events, GatewayIntentBits, TextChannel } from 'dis
 import { getConfig } from './config.js';
 import { RecordingManager } from './recording-session.js';
 import { RecordingStorage } from './storage.js';
+import { closeWebServer, startWebServer } from './web-server.js';
 
 const config = getConfig();
 const client = new Client({
@@ -9,6 +10,11 @@ const client = new Client({
 });
 
 let manager: RecordingManager | undefined;
+let shuttingDown = false;
+const webServer = startWebServer(config.port, () => ({
+  discordReady: client.isReady(),
+  recording: manager?.isRecording ?? false,
+}));
 
 function resultChannel(): TextChannel {
   const guild = client.guilds.cache.get(config.guildId);
@@ -40,8 +46,7 @@ client.once(Events.ClientReady, (readyClient) => {
     console.info(`Ready as ${readyClient.user.tag}`);
   } catch (error) {
     console.error('Bot startup validation failed', error);
-    readyClient.destroy();
-    process.exitCode = 1;
+    void shutdown('startup validation failure', 1);
   }
 });
 
@@ -99,10 +104,14 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   }
 });
 
-async function shutdown(signal: string): Promise<void> {
+async function shutdown(signal: string, exitCode = 0): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.info(`Received ${signal}; aborting active recording.`);
+  await closeWebServer(webServer).catch(console.error);
   await manager?.abortForRestart();
   client.destroy();
+  process.exitCode = exitCode;
 }
 
 process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
@@ -110,5 +119,5 @@ process.once('SIGINT', () => { void shutdown('SIGINT'); });
 
 client.login(config.discordToken).catch((error) => {
   console.error('Discord login failed', error);
-  process.exitCode = 1;
+  void shutdown('Discord login failure', 1);
 });

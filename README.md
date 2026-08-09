@@ -22,7 +22,12 @@ Bot に VC の閲覧・接続、結果チャンネルへの送信権限を付与
 
 ## Render
 
-`render.yaml` と `Dockerfile` を含めています。Render の Background Worker としてデプロイし、`.env.example` の値を Render の環境変数として登録してください。Dockerfile が FFmpeg を導入します。
+`render.yaml` と `Dockerfile` を含めています。Render の Web Service（Free）としてデプロイし、`.env.example` の値を Render の環境変数として登録してください。Dockerfile が FFmpeg を導入し、Render が設定する `PORT` で HTTP サーバーを起動します。
+
+- `GET /`: Bot の接続状態と録音状態を返します。
+- `GET /healthz`: Discord 接続済みなら HTTP 200、未接続なら HTTP 503 を返します。
+
+Render の無料 Web Service は受信アクセスが一定時間ないとスリープします。スリープ中は Discord から切断され、進行中の録音も中断されるため、常時稼働させる場合は外部の監視サービスから公開 URL の `/healthz` へ定期的にアクセスしてください。
 
 Google OAuth の認証には `https://www.googleapis.com/auth/drive` スコープを使用し、Refresh Token を Render の Secret 環境変数として登録してください。保存先には録音専用フォルダを使用してください。アップロードしたファイルは「リンクを知っている全員が閲覧可」に変更されます。
 
