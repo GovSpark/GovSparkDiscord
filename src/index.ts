@@ -20,6 +20,7 @@ import {
   parseMeetingNotesCustomId,
   validateMeetingNotes,
 } from './meeting-notes.js';
+import { registerGuildCommands } from './commands.js';
 
 const config = getConfig();
 const client = new Client({
@@ -168,7 +169,13 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
 process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
 process.once('SIGINT', () => { void shutdown('SIGINT'); });
 
-client.login(config.discordToken).catch((error) => {
-  console.error('Discord login failed', error);
-  void shutdown('Discord login failure', 1);
+async function startBot(): Promise<void> {
+  await registerGuildCommands(config);
+  console.info('Guild slash commands registered.');
+  await client.login(config.discordToken);
+}
+
+void startBot().catch((error) => {
+  console.error('Bot startup failed', error);
+  void shutdown('Bot startup failure', 1);
 });

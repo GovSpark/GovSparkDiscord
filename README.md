@@ -17,8 +17,8 @@ Discord のボイスチャンネルを録音し、MP3 を Cloudflare R2 に保�
 2. Cloudflare R2でバケットを作成し、Object Read & Write権限のR2 APIトークンを発行します。
 3. バケットの公開アクセスを有効化し、`recordings/`を90日後に削除するライフサイクルルールを設定します。
 4. `cp .env.example .env` を実行し、R2のEndpoint、Access Key ID、Secret Access Key、バケット名、公開URLを設定します。
-5. `npm install && npm run register-commands` を実行します。
-6. `npm run dev`（開発）または `npm run build && npm start`（本番）を実行します。
+5. `npm install`を実行します。
+6. `npm run dev`（開発）または`npm run build && npm start`（本番）を実行します。起動時に`/start`と`/stop`が対象サーバーへ自動登録されます。
 
 Bot に VC の閲覧・接続・発言、結果チャンネルへの送信・メッセージ履歴を読む権限を付与してください。この Bot が使う Gateway Intent に Privileged Intent の有効化は不要です。
 
