@@ -12,7 +12,6 @@ import {
 const CUSTOM_ID_PREFIX = 'meeting-notes';
 export const MEETING_SUMMARY_INPUT_ID = 'meeting-summary';
 export const MEETING_DECISIONS_INPUT_ID = 'meeting-decisions';
-export const MEETING_ACTIONS_INPUT_ID = 'meeting-actions';
 export const MEETING_NOTE_MAX_LENGTH = 1_000;
 
 export interface MeetingNotesCustomId {
@@ -24,7 +23,6 @@ export interface MeetingNotesCustomId {
 export interface MeetingNotes {
   summary: string;
   decisions: string;
-  nextActions: string;
 }
 
 export function buildInitialRecordingEmbed(input: {
@@ -49,6 +47,7 @@ export function buildCompletedRecordingEmbed(existing: APIEmbed, notes: MeetingN
   const initialFields = (existing.fields ?? []).filter(
     (field) => field.name === '録音時間' || field.name === '録音を開始した人',
   );
+  const taskFields = (existing.fields ?? []).filter((field) => field.name.startsWith('次にやること #'));
   if (initialFields.length !== 2) {
     throw new Error('録音結果Embedの基本情報を取得できませんでした。');
   }
@@ -57,7 +56,7 @@ export function buildCompletedRecordingEmbed(existing: APIEmbed, notes: MeetingN
     ...initialFields,
     { name: 'VCの内容', value: notes.summary },
     { name: '決まったこと', value: notes.decisions },
-    { name: '次に行動すること', value: notes.nextActions },
+    ...taskFields,
   );
 }
 
@@ -77,7 +76,6 @@ export function buildMeetingNotesModal(resultMessageId: string, startedByUserId:
     .addComponents(
       modalRow(MEETING_SUMMARY_INPUT_ID, 'VCの内容', '今回のVCで行ったことを入力してください。'),
       modalRow(MEETING_DECISIONS_INPUT_ID, '決まったこと', '決定事項を入力してください。特になければ「特になし」。'),
-      modalRow(MEETING_ACTIONS_INPUT_ID, '次に行動すること', '担当・期限などを入力してください。特になければ「特になし」。'),
     );
 }
 
@@ -99,7 +97,6 @@ export function validateMeetingNotes(notes: MeetingNotes): MeetingNotes {
   const normalized = {
     summary: notes.summary.trim(),
     decisions: notes.decisions.trim(),
-    nextActions: notes.nextActions.trim(),
   };
   if (Object.values(normalized).some((value) => value.length === 0)) {
     throw new Error('すべての項目を入力してください。該当しない項目には「特になし」と入力してください。');

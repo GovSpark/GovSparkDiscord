@@ -15,6 +15,7 @@ import { formatDuration, recordingFileName } from './util.js';
 import { buildInitialRecordingEmbed, buildMeetingNotesButton } from './meeting-notes.js';
 import { playVoiceCue, type VoiceCueName } from './voice-cue.js';
 import { buildStatusEmbed } from './status-embed.js';
+import { buildTaskButton } from './tasks.js';
 
 type StreamHandle = { destroy(): void };
 
@@ -108,7 +109,10 @@ export class RecordingSession {
             '録音が完了しました。以下のボタンから、今回のVCの内容を入力してください。',
             'info',
           )],
-          components: [buildMeetingNotesButton(resultMessage.id, this.startedBy.id)],
+          components: [
+            buildMeetingNotesButton(resultMessage.id, this.startedBy.id),
+            buildTaskButton(resultMessage.id, this.startedBy.id),
+          ],
         });
       } catch (error) {
         console.warn(`Could not send meeting notes DM to ${this.startedBy.id}`, error);
