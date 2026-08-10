@@ -88,6 +88,7 @@ export class RecordingSession {
       this.connection?.receiver.speaking.off('start', this.onSpeakingStart);
       for (const stream of this.streams) stream.destroy();
       if (reason === 'command') await this.playCueSafely('stop.wav');
+      this.disconnectVoice();
       await Promise.all([...this.tracks.values()].map((track) => track.close(durationMs)));
 
       const mp3Path = outputFilePath(directory);
@@ -132,7 +133,7 @@ export class RecordingSession {
       }).catch(console.error);
       throw error;
     } finally {
-      this.connection?.destroy();
+      this.disconnectVoice();
       await removeRecordingDirectory(directory).catch(console.error);
     }
   }
@@ -142,7 +143,7 @@ export class RecordingSession {
     this.stopping = true;
     this.connection?.receiver.speaking.off('start', this.onSpeakingStart);
     for (const stream of this.streams) stream.destroy();
-    this.connection?.destroy();
+    this.disconnectVoice();
     const directory = await this.directoryPromise;
     await removeRecordingDirectory(directory).catch(console.error);
     await this.resultChannel.send({
@@ -166,6 +167,11 @@ export class RecordingSession {
     } catch (error) {
       console.warn(`Could not play ${name}; continuing the recording workflow.`, error);
     }
+  }
+
+  private disconnectVoice(): void {
+    this.connection?.destroy();
+    this.connection = undefined;
   }
 
   private async subscribeUser(userId: string): Promise<void> {
