@@ -105,7 +105,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  if (!interaction.isChatInputCommand() || !['start', 'stop'].includes(interaction.commandName)) return;
+  if (!interaction.isChatInputCommand() || !['start', 'stop', 'message'].includes(interaction.commandName)) return;
   if (!interaction.guildId || interaction.guildId !== config.guildId) {
     await interaction.reply({
       embeds: [buildStatusEmbed('利用できないサーバー', 'この Bot は設定済みの Discord サーバーでのみ利用できます。', 'error')],
@@ -113,6 +113,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
     return;
   }
+
+  if (interaction.commandName === 'message') {
+    try {
+      if (!interaction.channel?.isSendable()) throw new Error('このチャンネルにはメッセージを投稿できません。');
+      const content = interaction.options.getString('content', true).trim();
+      if (!content) throw new Error('投稿するメッセージ内容を入力してください。');
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.channel.send({
+        content,
+        allowedMentions: { parse: [] },
+      });
+      await interaction.deleteReply();
+    } catch (error) {
+      console.error('Message command failed', error);
+      const message = error instanceof Error ? error.message : 'メッセージの投稿に失敗しました。';
+      const response = { embeds: [buildStatusEmbed('投稿エラー', message, 'error')] };
+      if (interaction.deferred || interaction.replied) await interaction.editReply(response).catch(console.error);
+      else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral }).catch(console.error);
+    }
+    return;
+  }
+
   if (!manager) {
     await interaction.reply({
       embeds: [buildStatusEmbed('準備中', 'Bot はまだ利用可能な状態ではありません。', 'warning')],
