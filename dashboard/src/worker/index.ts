@@ -35,8 +35,10 @@ app.get('/api/auth/login', beginOAuth);
 app.get('/api/auth/callback', finishOAuth);
 
 app.use('/api/me', requireAdmin);
-app.use('/api/members*', requireAdmin);
-app.use('/api/tasks*', requireAdmin);
+app.use('/api/members', requireAdmin);
+app.use('/api/members/*', requireAdmin);
+app.use('/api/tasks', requireAdmin);
+app.use('/api/tasks/*', requireAdmin);
 app.use('/api/auth/logout', requireAdmin);
 
 app.get('/api/me', (c) => c.json({ user: c.get('user') }));
