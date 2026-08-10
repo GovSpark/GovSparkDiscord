@@ -14,6 +14,16 @@ export const TASK_DETAILS_MAX_LENGTH = 1_000;
 
 export type TaskReportStatus = 'not_started' | 'in_progress' | 'completed';
 
+export interface AssignedTaskSummary {
+  id: string;
+  title: string;
+  description: string;
+  dueAt: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'active' | 'awaiting_report' | 'awaiting_next_due';
+  relatedUrl: string | null;
+}
+
 export interface TaskReportCustomId {
   action: 'open' | 'submit';
   roundId: string;
@@ -105,6 +115,18 @@ export class TaskApiClient {
     if (response.ok) return;
     const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
     throw new Error(body?.error || `タスク管理APIがエラーを返しました（HTTP ${response.status}）。`);
+  }
+
+  public async listAssignedTasks(userId: string): Promise<AssignedTaskSummary[]> {
+    const response = await fetch(`${this.baseUrl}/api/internal/tasks/${userId}`, {
+      headers: { authorization: `Bearer ${this.sharedSecret}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await response.json().catch(() => undefined) as { tasks?: AssignedTaskSummary[]; error?: string } | undefined;
+    if (!response.ok) {
+      throw new Error(body?.error || `タスク管理APIがエラーを返しました（HTTP ${response.status}）。`);
+    }
+    return body?.tasks ?? [];
   }
 }
 

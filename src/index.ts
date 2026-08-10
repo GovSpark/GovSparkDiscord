@@ -32,6 +32,7 @@ import {
   readTaskReport,
   TaskApiClient,
 } from './task-reports.js';
+import { buildAssignedTasksEmbed } from './task-list.js';
 
 const config = getConfig();
 const client = new Client({
@@ -124,7 +125,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  if (!interaction.isChatInputCommand() || !['start', 'stop', 'message'].includes(interaction.commandName)) return;
+  if (!interaction.isChatInputCommand() || !['start', 'stop', 'message', 'tasks'].includes(interaction.commandName)) return;
   if (!interaction.guildId || interaction.guildId !== config.guildId) {
     await interaction.reply({
       embeds: [buildStatusEmbed('利用できないサーバー', 'この Bot は設定済みの Discord サーバーでのみ利用できます。', 'error')],
@@ -150,6 +151,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const response = { embeds: [buildStatusEmbed('投稿エラー', message, 'error')] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(response).catch(console.error);
       else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral }).catch(console.error);
+    }
+    return;
+  }
+
+  if (interaction.commandName === 'tasks') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      if (!taskApi) throw new Error('タスク管理機能は現在設定されていません。管理者へ連絡してください。');
+      const tasks = await taskApi.listAssignedTasks(interaction.user.id);
+      await interaction.editReply({ embeds: [buildAssignedTasksEmbed(tasks)] });
+    } catch (error) {
+      console.error('Tasks command failed', error);
+      const message = error instanceof Error ? error.message : '担当タスクの取得に失敗しました。';
+      await interaction.editReply({ embeds: [buildStatusEmbed('タスク一覧を取得できません', message, 'error')] });
     }
     return;
   }

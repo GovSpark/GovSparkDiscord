@@ -45,6 +45,22 @@ export async function listEligibleMembers(env: Env) {
   return result.results;
 }
 
+export async function listAssignedTasks(env: Env, userId: string) {
+  if (!/^\d{16,20}$/.test(userId)) throw new HttpError(400, 'DiscordユーザーIDの形式が正しくありません。');
+  const result = await env.TASK_DB.prepare(
+    `SELECT t.id, t.title, t.description, t.due_at AS dueAt, t.priority,
+       t.status, t.related_url AS relatedUrl
+     FROM tasks t JOIN task_assignees ta ON ta.task_id = t.id
+     WHERE ta.user_id = ? AND ta.completed_at IS NULL
+       AND t.status IN ('active', 'awaiting_report', 'awaiting_next_due')
+     ORDER BY t.due_at ASC,
+       CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+       t.created_at ASC
+     LIMIT 100`,
+  ).bind(userId).all();
+  return result.results;
+}
+
 export async function listTasks(env: Env, filters: URLSearchParams) {
   const conditions: string[] = ['1 = 1'];
   const values: unknown[] = [];

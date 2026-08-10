@@ -10,6 +10,7 @@ import {
   enqueueDueReports,
   HttpError,
   listEligibleMembers,
+  listAssignedTasks,
   listTasks,
   submitReport,
   syncEligibleMembers,
@@ -83,6 +84,13 @@ app.post('/api/internal/reports', async (c) => {
   const result = await submitReport(c.env, await c.req.json());
   c.executionCtx.waitUntil(processOutbox(c.env));
   return c.json(result, 201);
+});
+
+app.get('/api/internal/tasks/:userId', async (c) => {
+  if (!(await validBearer(c.req.header('authorization'), c.env.TASK_API_SHARED_SECRET))) {
+    return c.json({ error: '内部APIの認証に失敗しました。' }, 401);
+  }
+  return c.json({ tasks: await listAssignedTasks(c.env, c.req.param('userId')) });
 });
 
 app.onError((error, c) => {
