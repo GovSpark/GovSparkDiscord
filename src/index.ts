@@ -15,6 +15,7 @@ import { closeWebServer, startWebServer } from './web-server.js';
 import {
   buildCompletedRecordingEmbed,
   buildMeetingNotesModal,
+  MEETING_ACTIONS_INPUT_ID,
   MEETING_DECISIONS_INPUT_ID,
   MEETING_SUMMARY_INPUT_ID,
   parseMeetingNotesCustomId,
@@ -22,18 +23,7 @@ import {
 } from './meeting-notes.js';
 import { registerGuildCommands } from './commands.js';
 import { buildStatusEmbed } from './status-embed.js';
-import {
-  addTaskToRecordingEmbed,
-  buildTaskModal,
-  parseTaskCustomId,
-  TASK_ASSIGNEE_INPUT_ID,
-  TASK_DEADLINE_INPUT_ID,
-  TASK_NAME_INPUT_ID,
-  TASK_PRIORITY_INPUT_ID,
-  validateMeetingTask,
-  type TaskCustomId,
-} from './tasks.js';
-import { TaskReminderManager } from './task-reminders.js';
+import { leaveIfUnauthorized } from './guild-access.js';
 
 const config = getConfig();
 const client = new Client({
@@ -41,7 +31,6 @@ const client = new Client({
 });
 
 let manager: RecordingManager | undefined;
-let taskReminders: TaskReminderManager | undefined;
 let shuttingDown = false;
 const webServer = startWebServer(config.port, () => ({
   discordReady: client.isReady(),
@@ -60,13 +49,18 @@ function resultChannel(): TextChannel {
   return matches.first()!;
 }
 
-client.once(Events.ClientReady, async (readyClient) => {
+client.once(Events.ClientReady, (readyClient) => {
   try {
-    const channel = resultChannel();
+    for (const guild of readyClient.guilds.cache.values()) {
+      void leaveIfUnauthorized(guild, config.guildId)
+        .then((left) => {
+          if (left) console.warn(`Left unauthorized guild ${guild.name} (${guild.id}).`);
+        })
+        .catch((error) => console.error(`Could not leave unauthorized guild ${guild.id}`, error));
+    }
+    resultChannel();
     const storage = new RecordingStorage(config.r2);
     manager = new RecordingManager(config, storage, resultChannel, readyClient.user.id);
-    taskReminders = new TaskReminderManager(client, channel);
-    await taskReminders.start();
     console.info(`Ready as ${readyClient.user.tag}`);
   } catch (error) {
     console.error('Bot startup validation failed', error);
@@ -74,18 +68,22 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
 });
 
+client.on(Events.GuildCreate, (guild) => {
+  void leaveIfUnauthorized(guild, config.guildId)
+    .then((left) => {
+      if (left) console.warn(`Left unauthorized guild ${guild.name} (${guild.id}).`);
+    })
+    .catch((error) => console.error(`Could not leave unauthorized guild ${guild.id}`, error));
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton() || interaction.isModalSubmit()) {
-    const meetingNotesCustomId = parseMeetingNotesCustomId(interaction.customId);
-    const taskCustomId = parseTaskCustomId(interaction.customId);
-    if (!meetingNotesCustomId && !taskCustomId) return;
-    const operation = meetingNotesCustomId
-      ? handleMeetingNotesInteraction(interaction, meetingNotesCustomId)
-      : handleTaskInteraction(interaction, taskCustomId!);
-    await operation.catch(async (error) => {
-      console.error('Recording detail interaction failed', error);
-      const message = error instanceof Error ? error.message : '録音情報の更新中にエラーが発生しました。';
-      const response = { embeds: [buildStatusEmbed('録音情報の更新エラー', message, 'error')] };
+    const customId = parseMeetingNotesCustomId(interaction.customId);
+    if (!customId) return;
+    await handleMeetingNotesInteraction(interaction, customId).catch(async (error) => {
+      console.error('Meeting notes interaction failed', error);
+      const message = error instanceof Error ? error.message : '会議内容の更新中にエラーが発生しました。';
+      const response = { embeds: [buildStatusEmbed('会議内容の更新エラー', message, 'error')] };
       if (interaction.replied || interaction.deferred) await interaction.editReply(response).catch(console.error);
       else await interaction.reply(response).catch(console.error);
     });
@@ -170,6 +168,7 @@ async function handleMeetingNotesInteraction(
   const notes = validateMeetingNotes({
     summary: interaction.fields.getTextInputValue(MEETING_SUMMARY_INPUT_ID),
     decisions: interaction.fields.getTextInputValue(MEETING_DECISIONS_INPUT_ID),
+    nextActions: interaction.fields.getTextInputValue(MEETING_ACTIONS_INPUT_ID),
   });
   const channel = resultChannel();
   const resultMessage = await channel.messages.fetch(customId.resultMessageId).catch(() => undefined);
@@ -181,52 +180,6 @@ async function handleMeetingNotesInteraction(
   await resultMessage.edit({ embeds: [updatedEmbed] });
   await interaction.reply({
     embeds: [buildStatusEmbed('会議内容を更新しました', '会議内容を録音結果へ反映しました。再入力すると内容を上書きできます。', 'success')],
-  });
-}
-
-async function handleTaskInteraction(
-  interaction: ButtonInteraction | ModalSubmitInteraction,
-  customId: TaskCustomId,
-): Promise<void> {
-  if (interaction.user.id !== customId.startedByUserId) {
-    await interaction.reply({
-      embeds: [buildStatusEmbed('追加できません', 'タスクを追加できるのは、録音を開始したユーザーだけです。', 'error')],
-    });
-    return;
-  }
-
-  if (interaction.isButton()) {
-    if (customId.action !== 'open') throw new Error('タスク追加ボタンの情報が正しくありません。');
-    await interaction.showModal(buildTaskModal(customId.resultMessageId, customId.startedByUserId));
-    return;
-  }
-
-  if (customId.action !== 'submit') throw new Error('タスク入力フォームの情報が正しくありません。');
-  const taskInput = validateMeetingTask({
-    task: interaction.fields.getTextInputValue(TASK_NAME_INPUT_ID),
-    assignee: interaction.fields.getTextInputValue(TASK_ASSIGNEE_INPUT_ID),
-    deadline: interaction.fields.getTextInputValue(TASK_DEADLINE_INPUT_ID),
-    priority: interaction.fields.getTextInputValue(TASK_PRIORITY_INPUT_ID),
-  });
-  const guild = client.guilds.cache.get(config.guildId);
-  if (!guild) throw new Error('対象のDiscordサーバーを取得できませんでした。');
-  const assignee = await guild.members.fetch(taskInput.assigneeUserId).catch(() => undefined);
-  if (!assignee || assignee.user.bot) throw new Error('担当者には、このサーバーに参加しているユーザーを指定してください。');
-
-  const channel = resultChannel();
-  const resultMessage = await channel.messages.fetch(customId.resultMessageId).catch(() => undefined);
-  if (!resultMessage || resultMessage.author.id !== client.user?.id || !resultMessage.embeds[0]) {
-    throw new Error('録音結果メッセージが削除されたか、取得できませんでした。');
-  }
-  const { embed, task } = addTaskToRecordingEmbed(resultMessage.embeds[0].toJSON(), taskInput);
-  const updatedMessage = await resultMessage.edit({ embeds: [embed] });
-  taskReminders?.track(updatedMessage);
-  await interaction.reply({
-    embeds: [buildStatusEmbed(
-      'タスクを追加しました',
-      `**タスク** ${task.task}\n**担当者** <@${task.assigneeUserId}>\n**期限** <t:${Math.floor(task.deadlineMs / 1_000)}:F>\n**優先度** ${task.priority}`,
-      'success',
-    )],
   });
 }
 
@@ -248,7 +201,6 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   shuttingDown = true;
   console.info(`Received ${signal}; aborting active recording.`);
   await closeWebServer(webServer).catch(console.error);
-  taskReminders?.stop();
   await manager?.abortForRestart();
   client.destroy();
   process.exitCode = exitCode;

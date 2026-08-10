@@ -23,7 +23,7 @@ test('initial recording embed contains only base fields and recording link', () 
   assert.match(embed.description ?? '', /録音を再生/);
 });
 
-test('completed embed adds the meeting note fields', () => {
+test('completed embed adds the three meeting note fields', () => {
   const initial = buildInitialRecordingEmbed({
     duration: '01:00:00',
     startedByUserId: userId,
@@ -32,6 +32,7 @@ test('completed embed adds the meeting note fields', () => {
   const completed = buildCompletedRecordingEmbed(initial, {
     summary: '機能設計を確認した',
     decisions: '来週リリースする',
+    nextActions: '担当者がテストする',
   }).toJSON();
 
   assert.deepEqual(completed.fields?.map((field) => field.name), [
@@ -39,6 +40,7 @@ test('completed embed adds the meeting note fields', () => {
     '録音を開始した人',
     'VCの内容',
     '決まったこと',
+    '次に行動すること',
   ]);
 });
 
@@ -54,9 +56,9 @@ test('button custom ID can be parsed without in-memory state', () => {
 });
 
 test('meeting notes reject blank values and trim valid input', () => {
-  assert.throws(() => validateMeetingNotes({ summary: ' ', decisions: '決定' }));
+  assert.throws(() => validateMeetingNotes({ summary: ' ', decisions: '決定', nextActions: '対応' }));
   assert.deepEqual(
-    validateMeetingNotes({ summary: ' 内容 ', decisions: ' 決定 ' }),
-    { summary: '内容', decisions: '決定' },
+    validateMeetingNotes({ summary: ' 内容 ', decisions: ' 決定 ', nextActions: ' 対応 ' }),
+    { summary: '内容', decisions: '決定', nextActions: '対応' },
   );
 });
