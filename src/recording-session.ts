@@ -6,13 +6,18 @@ import {
   VoiceConnection,
   VoiceConnectionStatus,
 } from '@discordjs/voice';
-import type { TextChannel, User, VoiceBasedChannel } from 'discord.js';
+import type { Message, TextChannel, User, VoiceBasedChannel } from 'discord.js';
 import prism from 'prism-media';
 import type { Config } from './config.js';
 import { createRecordingDirectory, mixTracks, outputFilePath, PcmTrack, removeRecordingDirectory, trackFilePath } from './audio.js';
 import { RecordingStorage } from './storage.js';
 import { formatDuration, recordingFileName } from './util.js';
-import { buildInitialRecordingEmbed, buildMeetingNotesButton } from './meeting-notes.js';
+import {
+  buildFailedRecordingEmbed,
+  buildMeetingNotesButton,
+  buildPreparingRecordingEmbed,
+  buildReadyRecordingEmbed,
+} from './meeting-notes.js';
 import { playVoiceCue, type VoiceCueName } from './voice-cue.js';
 import { buildStatusEmbed } from './status-embed.js';
 
@@ -84,6 +89,8 @@ export class RecordingSession {
     this.stopping = true;
     const durationMs = Date.now() - this.startedAtMs;
     const directory = await this.directoryPromise;
+    let resultMessage: Message | undefined;
+    let dmMessage: Message | undefined;
     try {
       this.connection?.receiver.speaking.off('start', this.onSpeakingStart);
       for (const stream of this.streams) stream.destroy();
@@ -91,22 +98,17 @@ export class RecordingSession {
       this.disconnectVoice();
       await Promise.all([...this.tracks.values()].map((track) => track.close(durationMs)));
 
-      const mp3Path = outputFilePath(directory);
-      await mixTracks(this.config.ffmpegPath, [...this.tracks.values()], durationMs, mp3Path);
-      const fileName = recordingFileName(this.startedAt, this.voiceChannel.id);
-      const url = await this.storage.uploadWithRetry(mp3Path, fileName);
-      const resultMessage = await this.resultChannel.send({
-        embeds: [buildInitialRecordingEmbed({
+      resultMessage = await this.resultChannel.send({
+        embeds: [buildPreparingRecordingEmbed({
           duration: formatDuration(durationMs),
           startedByUserId: this.startedBy.id,
-          recordingUrl: url,
         })],
       });
       try {
-        await this.startedBy.send({
+        dmMessage = await this.startedBy.send({
           embeds: [buildStatusEmbed(
             '会議内容を入力してください',
-            '録音が完了しました。以下のボタンから、今回のVCの内容を入力してください。',
+            '録音ファイルは現在準備中です。以下のボタンから、先に今回のVCの内容を入力できます。',
             'info',
           )],
           components: [buildMeetingNotesButton(resultMessage.id, this.startedBy.id)],
@@ -121,16 +123,61 @@ export class RecordingSession {
           ],
         }).catch(console.error);
       }
+
+      const mp3Path = outputFilePath(directory);
+      await mixTracks(this.config.ffmpegPath, [...this.tracks.values()], durationMs, mp3Path);
+      const fileName = recordingFileName(this.startedAt, this.voiceChannel.id);
+      const url = await this.storage.uploadWithRetry(mp3Path, fileName);
+      const currentResult = await this.resultChannel.messages.fetch(resultMessage.id);
+      await currentResult.edit({
+        embeds: [
+          buildReadyRecordingEmbed(currentResult.embeds[0]!.toJSON(), url),
+          ...currentResult.embeds.slice(1).map((embed) => embed.toJSON()),
+        ],
+      });
+      if (dmMessage) {
+        await dmMessage.edit({
+          embeds: [buildStatusEmbed(
+            '録音の準備が完了しました',
+            `[録音を再生](${url})\n録音リンクは公開されており、リンクを知る第三者もアクセスできます。`,
+            'success',
+          )],
+          components: [buildMeetingNotesButton(resultMessage.id, this.startedBy.id)],
+        }).catch((error) => console.warn(`Could not update meeting notes DM for ${this.startedBy.id}`, error));
+      }
       console.info(`Recording saved (${reason}): ${fileName}`);
     } catch (error) {
       console.error('Recording finalization failed', error);
-      await this.resultChannel.send({
-        embeds: [buildStatusEmbed(
-          '録音の保存に失敗しました',
-          '録音の変換または Cloudflare R2 へのアップロードに失敗しました。管理者は Bot のログを確認してください。',
-          'error',
-        )],
-      }).catch(console.error);
+      if (resultMessage) {
+        const originalResult = resultMessage;
+        const currentResult = await this.resultChannel.messages.fetch(originalResult.id).catch(() => originalResult);
+        if (currentResult.embeds[0]) {
+          await currentResult.edit({
+            embeds: [
+              buildFailedRecordingEmbed(currentResult.embeds[0].toJSON()),
+              ...currentResult.embeds.slice(1).map((embed) => embed.toJSON()),
+            ],
+          }).catch(console.error);
+        }
+        if (dmMessage) {
+          await dmMessage.edit({
+            embeds: [buildStatusEmbed(
+              '録音ファイルの保存に失敗しました',
+              '録音ファイルを保存できませんでした。会議内容は引き続き下のボタンから入力できます。',
+              'error',
+            )],
+            components: [buildMeetingNotesButton(originalResult.id, this.startedBy.id)],
+          }).catch(console.error);
+        }
+      } else {
+        await this.resultChannel.send({
+          embeds: [buildStatusEmbed(
+            '録音の保存に失敗しました',
+            '録音結果の通知または録音ファイルの保存に失敗しました。管理者はBotのログを確認してください。',
+            'error',
+          )],
+        }).catch(console.error);
+      }
       throw error;
     } finally {
       this.disconnectVoice();

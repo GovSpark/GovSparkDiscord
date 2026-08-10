@@ -27,22 +27,35 @@ export interface MeetingNotes {
   nextActions: string;
 }
 
-export function buildInitialRecordingEmbed(input: {
+export function buildPreparingRecordingEmbed(input: {
   duration: string;
   startedByUserId: string;
-  recordingUrl: string;
 }): EmbedBuilder {
   return new EmbedBuilder()
-    .setColor(0x5865f2)
+    .setColor(0xfee75c)
     .setTitle('VC録音結果')
-    .setURL(input.recordingUrl)
-    .setDescription(`[録音を再生](${input.recordingUrl})`)
+    .setDescription('録音ファイルを準備中です。変換とアップロードが完了すると、このメッセージにリンクが表示されます。')
     .addFields(
       { name: '録音時間', value: input.duration, inline: true },
       { name: '録音を開始した人', value: `<@${input.startedByUserId}>`, inline: true },
     )
-    .setFooter({ text: '録音リンクは公開されています。リンクを知る第三者もアクセスできます。' })
+    .setFooter({ text: '録音ファイル：準備中' })
     .setTimestamp();
+}
+
+export function buildReadyRecordingEmbed(existing: APIEmbed, recordingUrl: string): EmbedBuilder {
+  return EmbedBuilder.from(existing)
+    .setColor(0x5865f2)
+    .setURL(recordingUrl)
+    .setDescription(`[録音を再生](${recordingUrl})`)
+    .setFooter({ text: '録音リンクは公開されています。リンクを知る第三者もアクセスできます。' });
+}
+
+export function buildFailedRecordingEmbed(existing: APIEmbed): EmbedBuilder {
+  return EmbedBuilder.from(existing)
+    .setColor(0xed4245)
+    .setDescription('録音ファイルの変換またはCloudflare R2へのアップロードに失敗しました。管理者はBotのログを確認してください。')
+    .setFooter({ text: '録音ファイル：保存失敗' });
 }
 
 export function buildCompletedRecordingEmbed(existing: APIEmbed, notes: MeetingNotes): EmbedBuilder {

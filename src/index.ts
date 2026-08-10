@@ -269,7 +269,9 @@ async function handleMeetingNotesInteraction(
   }
 
   const updatedEmbed = buildCompletedRecordingEmbed(resultMessage.embeds[0].toJSON(), notes);
-  await resultMessage.edit({ embeds: [updatedEmbed] });
+  await resultMessage.edit({
+    embeds: [updatedEmbed, ...resultMessage.embeds.slice(1).map((embed) => embed.toJSON())],
+  });
   await interaction.reply({
     embeds: [buildStatusEmbed('会議内容を更新しました', '会議内容を録音結果へ反映しました。再入力すると内容を上書きできます。', 'success')],
   });
