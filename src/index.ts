@@ -6,6 +6,7 @@ import {
   MessageFlags,
   TextChannel,
   type ButtonInteraction,
+  type Guild,
   type ModalSubmitInteraction,
 } from 'discord.js';
 import { getConfig } from './config.js';
@@ -49,13 +50,30 @@ function resultChannel(): TextChannel {
   return matches.first()!;
 }
 
+async function notifyUnauthorizedGuildOwner(guild: Guild): Promise<void> {
+  try {
+    const owner = await guild.fetchOwner();
+    await owner.send({
+      embeds: [buildStatusEmbed(
+        'このBotは利用できません',
+        'このBotは特定のサーバーでのみ利用可能です。',
+        'warning',
+      )],
+    });
+  } catch (error) {
+    console.warn(`Could not notify owner of unauthorized guild ${guild.id}`, error);
+  }
+}
+
+async function enforceGuildAccess(guild: Guild): Promise<void> {
+  const left = await leaveIfUnauthorized(guild, config.guildId, notifyUnauthorizedGuildOwner);
+  if (left) console.warn(`Left unauthorized guild ${guild.name} (${guild.id}).`);
+}
+
 client.once(Events.ClientReady, (readyClient) => {
   try {
     for (const guild of readyClient.guilds.cache.values()) {
-      void leaveIfUnauthorized(guild, config.guildId)
-        .then((left) => {
-          if (left) console.warn(`Left unauthorized guild ${guild.name} (${guild.id}).`);
-        })
+      void enforceGuildAccess(guild)
         .catch((error) => console.error(`Could not leave unauthorized guild ${guild.id}`, error));
     }
     resultChannel();
@@ -69,10 +87,7 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 client.on(Events.GuildCreate, (guild) => {
-  void leaveIfUnauthorized(guild, config.guildId)
-    .then((left) => {
-      if (left) console.warn(`Left unauthorized guild ${guild.name} (${guild.id}).`);
-    })
+  void enforceGuildAccess(guild)
     .catch((error) => console.error(`Could not leave unauthorized guild ${guild.id}`, error));
 });
 
