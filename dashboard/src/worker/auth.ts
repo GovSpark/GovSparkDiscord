@@ -55,7 +55,7 @@ export async function finishOAuth(c: AppContext): Promise<Response> {
   if (!userResponse.ok) return c.redirect('/?auth_error=identity');
   const user = await userResponse.json() as { id: string; username: string; global_name?: string | null; avatar?: string | null };
   const member = await getGuildMember(c.env, user.id);
-  if (!member?.roles.includes(c.env.DISCORD_ADMIN_ROLE_ID)) return c.redirect('/?auth_error=forbidden');
+  if (!member || !hasAdminRole(member.roles, c.env)) return c.redirect('/?auth_error=forbidden');
 
   const sessionToken = randomToken(32);
   const csrfToken = randomToken(24);
@@ -92,7 +92,7 @@ export const requireAdmin: MiddlewareHandler<{ Bindings: Env; Variables: Variabl
   }
   if (Date.now() - Date.parse(session.last_role_checked_at) >= ROLE_CACHE_SECONDS * 1000) {
     const member = await getGuildMember(c.env, session.user_id);
-    if (!member?.roles.includes(c.env.DISCORD_ADMIN_ROLE_ID)) {
+    if (!member || !hasAdminRole(member.roles, c.env)) {
       await c.env.TASK_DB.prepare('DELETE FROM web_sessions WHERE token_hash = ?').bind(sessionHash).run();
       deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true, sameSite: 'Lax' });
       return c.json({ error: '統括ロールが確認できません。' }, 403);
@@ -127,6 +127,14 @@ export async function logout(c: AppContext): Promise<Response> {
 
 export function hasSessionCookie(c: Context): boolean {
   return Boolean(getCookie(c, SESSION_COOKIE));
+}
+
+export function hasAdminRole(memberRoleIds: string[], env: Pick<Env, 'DISCORD_ADMIN_ROLE_ID' | 'DISCORD_ADMIN_ROLE_IDS'>): boolean {
+  const configuredRoleIds = (env.DISCORD_ADMIN_ROLE_IDS || env.DISCORD_ADMIN_ROLE_ID)
+    .split(',')
+    .map((roleId) => roleId.trim())
+    .filter(Boolean);
+  return configuredRoleIds.some((roleId) => memberRoleIds.includes(roleId));
 }
 
 function secureCookieOptions(maxAge: number) {

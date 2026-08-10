@@ -12,7 +12,7 @@ npx wrangler login
 npx wrangler d1 create govspark-tasks
 ```
 
-表示された`database_id`を`wrangler.toml`へ設定します。同じファイルのGuild ID、各ロールID、通知チャンネルID、公開URLも実際の値へ変更してください。ロールIDはDiscordの「開発者モード」を有効化し、各ロールを右クリックして取得できます。
+表示された`database_id`を`wrangler.toml`へ設定します。同じファイルのGuild ID、各ロールID、通知チャンネルID、公開URLも実際の値へ変更してください。管理画面へのログインを許可するロールは`DISCORD_ADMIN_ROLE_IDS`へカンマ区切りで指定します。ロールIDはDiscordの「開発者モード」を有効化し、各ロールを右クリックして取得できます。
 
 次の値は平文の`[vars]`には置かず、Workers Secretsとして登録します。
 

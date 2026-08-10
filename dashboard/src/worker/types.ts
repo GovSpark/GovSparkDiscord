@@ -6,6 +6,7 @@ export interface Env {
   DISCORD_BOT_TOKEN: string;
   DISCORD_GUILD_ID: string;
   DISCORD_ADMIN_ROLE_ID: string;
+  DISCORD_ADMIN_ROLE_IDS?: string;
   DISCORD_ASSIGNEE_ROLE_IDS: string;
   TASK_NOTIFICATION_CHANNEL_ID: string;
   DASHBOARD_BASE_URL: string;
