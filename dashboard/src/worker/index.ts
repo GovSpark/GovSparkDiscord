@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
-import { beginOAuth, finishOAuth, logout, requireAdmin, requireCsrf } from './auth';
+import { beginOAuth, finishOAuth, hasSessionCookie, logout, requireAdmin, requireCsrf } from './auth';
 import { processOutbox } from './notifications';
 import {
   cancelTask,
@@ -30,6 +30,7 @@ app.use('*', secureHeaders({
 }));
 
 app.get('/api/health', (c) => c.json({ healthy: true }));
+app.get('/api/session', (c) => c.json({ authenticated: hasSessionCookie(c) }));
 app.get('/api/auth/login', beginOAuth);
 app.get('/api/auth/callback', finishOAuth);
 
@@ -88,7 +89,10 @@ app.onError((error, c) => {
   return c.json({ error: 'サーバー処理中にエラーが発生しました。' }, 500);
 });
 
-app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
+app.all('*', async (c) => {
+  const response = await c.env.ASSETS.fetch(c.req.raw);
+  return new Response(response.body, response);
+});
 
 async function scheduled(env: Env): Promise<void> {
   const now = new Date();

@@ -49,7 +49,9 @@ export function App() {
   }, [query, status, priority]);
 
   useEffect(() => {
-    api<{ user: User }>('/api/me').then(async ({ user: current }) => {
+    api<{ authenticated: boolean }>('/api/session').then(async ({ authenticated }) => {
+      if (!authenticated) return;
+      const { user: current } = await api<{ user: User }>('/api/me');
       setUser(current);
       setCsrfToken(current.csrfToken);
       const [memberResult, taskResult] = await Promise.all([
@@ -225,7 +227,7 @@ export function App() {
 function Login({ error }: { error: string }) {
   const authError = new URLSearchParams(location.search).get('auth_error');
   const message = error || ({ forbidden: 'この管理画面は「統括」ロールを持つメンバーだけが利用できます。', invalid_state: '認証の有効期限が切れました。もう一度お試しください。', token_exchange: 'Discord認証に失敗しました。', identity: 'Discordユーザー情報を取得できませんでした。' } as Record<string, string>)[authError ?? ''];
-  return <div className="login-page"><div className="login-glow" /><section className="login-card"><span className="brand-mark large">G</span><p className="eyebrow">GOVSPARK OPERATIONS</p><h1>タスク管理へログイン</h1><p>タスクの割り当て、期限管理、Discordからの進捗報告を一つの画面で管理します。</p>{message && <div className="alert error">{message}</div>}<a className="discord-login" href="/api/auth/login"><span>⌁</span> Discordでログイン</a><small>指定サーバーの「統括」ロールが必要です</small></section></div>;
+  return <div className="login-page"><div className="login-glow" /><section className="login-card"><span className="brand-mark large">G</span><p className="eyebrow">GOVSPARK OPERATIONS</p><h1>タスク管理へログイン</h1><p>タスクの割り当て、期限管理、Discordからの進捗報告を一つの画面で管理します。</p>{message && <div className="alert error">{message}</div>}<a className="discord-login" href="/api/auth/login?source=dashboard"><span>⌁</span> Discordでログイン</a><small>指定サーバーの「統括」ロールが必要です</small></section></div>;
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {

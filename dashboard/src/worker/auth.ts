@@ -11,6 +11,7 @@ const ROLE_CACHE_SECONDS = 5 * 60;
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
 
 export async function beginOAuth(c: AppContext): Promise<Response> {
+  c.header('cache-control', 'no-store');
   const state = randomToken(24);
   const signedState = `${state}.${await sign(c.env.SESSION_SECRET, state)}`;
   setCookie(c, OAUTH_STATE_COOKIE, signedState, secureCookieOptions(600));
@@ -25,6 +26,7 @@ export async function beginOAuth(c: AppContext): Promise<Response> {
 }
 
 export async function finishOAuth(c: AppContext): Promise<Response> {
+  c.header('cache-control', 'no-store');
   const code = c.req.query('code');
   const state = c.req.query('state');
   const cookie = getCookie(c, OAUTH_STATE_COOKIE);
@@ -121,6 +123,10 @@ export async function logout(c: AppContext): Promise<Response> {
   await c.env.TASK_DB.prepare('DELETE FROM web_sessions WHERE token_hash = ?').bind(c.get('sessionHash')).run();
   deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true, sameSite: 'Lax' });
   return c.json({ ok: true });
+}
+
+export function hasSessionCookie(c: Context): boolean {
+  return Boolean(getCookie(c, SESSION_COOKIE));
 }
 
 function secureCookieOptions(maxAge: number) {
