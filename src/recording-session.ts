@@ -20,6 +20,7 @@ import {
 } from './meeting-notes.js';
 import { playVoiceCue, type VoiceCueName } from './voice-cue.js';
 import { buildStatusEmbed } from './status-embed.js';
+import { updateRecordingResult } from './recording-result.js';
 
 type StreamHandle = { destroy(): void };
 
@@ -128,13 +129,11 @@ export class RecordingSession {
       await mixTracks(this.config.ffmpegPath, [...this.tracks.values()], durationMs, mp3Path);
       const fileName = recordingFileName(this.startedAt, this.voiceChannel.id);
       const url = await this.storage.uploadWithRetry(mp3Path, fileName);
-      const currentResult = await this.resultChannel.messages.fetch(resultMessage.id);
-      await currentResult.edit({
-        embeds: [
-          buildReadyRecordingEmbed(currentResult.embeds[0]!.toJSON(), url),
-          ...currentResult.embeds.slice(1).map((embed) => embed.toJSON()),
-        ],
-      });
+      await updateRecordingResult(
+        this.resultChannel,
+        resultMessage.id,
+        (current) => buildReadyRecordingEmbed(current, url),
+      );
       if (dmMessage) {
         await dmMessage.edit({
           embeds: [buildStatusEmbed(
@@ -150,15 +149,11 @@ export class RecordingSession {
       console.error('Recording finalization failed', error);
       if (resultMessage) {
         const originalResult = resultMessage;
-        const currentResult = await this.resultChannel.messages.fetch(originalResult.id).catch(() => originalResult);
-        if (currentResult.embeds[0]) {
-          await currentResult.edit({
-            embeds: [
-              buildFailedRecordingEmbed(currentResult.embeds[0].toJSON()),
-              ...currentResult.embeds.slice(1).map((embed) => embed.toJSON()),
-            ],
-          }).catch(console.error);
-        }
+        await updateRecordingResult(
+          this.resultChannel,
+          originalResult.id,
+          buildFailedRecordingEmbed,
+        ).catch(console.error);
         if (dmMessage) {
           await dmMessage.edit({
             embeds: [buildStatusEmbed(

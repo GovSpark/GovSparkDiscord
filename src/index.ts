@@ -33,6 +33,7 @@ import {
   TaskApiClient,
 } from './task-reports.js';
 import { buildAssignedTasksEmbed } from './task-list.js';
+import { updateRecordingResult } from './recording-result.js';
 
 const config = getConfig();
 const client = new Client({
@@ -263,15 +264,19 @@ async function handleMeetingNotesInteraction(
     nextActions: interaction.fields.getTextInputValue(MEETING_ACTIONS_INPUT_ID),
   });
   const channel = resultChannel();
-  const resultMessage = await channel.messages.fetch(customId.resultMessageId).catch(() => undefined);
+  const resultMessage = await channel.messages.fetch({
+    message: customId.resultMessageId,
+    force: true,
+  }).catch(() => undefined);
   if (!resultMessage || resultMessage.author.id !== client.user?.id || !resultMessage.embeds[0]) {
     throw new Error('録音結果メッセージが削除されたか、取得できませんでした。');
   }
 
-  const updatedEmbed = buildCompletedRecordingEmbed(resultMessage.embeds[0].toJSON(), notes);
-  await resultMessage.edit({
-    embeds: [updatedEmbed, ...resultMessage.embeds.slice(1).map((embed) => embed.toJSON())],
-  });
+  await updateRecordingResult(
+    channel,
+    customId.resultMessageId,
+    (current) => buildCompletedRecordingEmbed(current, notes),
+  );
   await interaction.reply({
     embeds: [buildStatusEmbed('会議内容を更新しました', '会議内容を録音結果へ反映しました。再入力すると内容を上書きできます。', 'success')],
   });
