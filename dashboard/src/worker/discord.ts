@@ -50,6 +50,13 @@ export async function sendChannelMessage(env: Env, body: unknown): Promise<{ id:
   });
 }
 
+export async function editChannelMessage(env: Env, messageId: string, body: unknown): Promise<{ id: string }> {
+  return discordBotRequest(env, `/channels/${env.TASK_NOTIFICATION_CHANNEL_ID}/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function sendDirectMessage(env: Env, userId: string, body: unknown): Promise<{ id: string }> {
   const channel = await discordBotRequest<{ id: string }>(env, '/users/@me/channels', {
     method: 'POST',

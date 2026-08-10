@@ -1,4 +1,4 @@
-import { sendChannelMessage, sendDirectMessage } from './discord';
+import { editChannelMessage, sendChannelMessage, sendDirectMessage } from './discord';
 import type { Env, OutboxRow, ReportStatus } from './types';
 
 const COLORS = { primary: 0x5865f2, warning: 0xfee75c, success: 0x57f287 };
@@ -44,7 +44,9 @@ async function deliver(env: Env, row: OutboxRow): Promise<string> {
     'SELECT id, title, description, due_at, priority, related_url, status FROM tasks WHERE id = ?',
   ).bind(row.task_id).first<TaskRow>();
   if (!task) throw new Error('通知対象のタスクが見つかりません。');
-  if (task.status === 'cancelled' && row.kind !== 'report_channel') return 'skipped-cancelled';
+  if (task.status === 'cancelled' && !['cancellation_channel', 'cancellation_dm', 'report_channel'].includes(row.kind)) {
+    return 'skipped-cancelled';
+  }
 
   switch (row.kind) {
     case 'assignment_channel': {
@@ -58,8 +60,37 @@ async function deliver(env: Env, row: OutboxRow): Promise<string> {
     }
     case 'assignment_dm': {
       if (!row.user_id) throw new Error('DM通知の担当者が指定されていません。');
+      if (!row.reference_id) throw new Error('報告回の情報が不足しています。');
       const message = await sendDirectMessage(env, row.user_id, {
         embeds: [taskEmbed('新しいタスクが割り振られました', task, `<@${row.user_id}>`, COLORS.primary)],
+        components: [buildReportButton(row.reference_id, '完了報告')],
+      });
+      return message.id;
+    }
+    case 'cancellation_channel': {
+      const assignments = await env.TASK_DB.prepare(
+        `SELECT discord_message_id FROM notification_outbox
+         WHERE task_id = ? AND kind = 'assignment_channel' AND status = 'sent'
+           AND discord_message_id IS NOT NULL AND discord_message_id NOT LIKE 'skipped-%'
+         ORDER BY created_at`,
+      ).bind(task.id).all<{ discord_message_id: string }>();
+      if (assignments.results.length === 0) return 'skipped-no-assignment-message';
+      const assignees = await assigneeMentions(env, task.id);
+      let lastMessageId = '';
+      for (const assignment of assignments.results) {
+        const message = await editChannelMessage(env, assignment.discord_message_id, {
+          embeds: [taskEmbed('このタスクはキャンセルされました', task, assignees.join('、'), 0xed4245)],
+          components: [],
+        });
+        lastMessageId = message.id;
+      }
+      return lastMessageId;
+    }
+    case 'cancellation_dm': {
+      if (!row.user_id) throw new Error('キャンセル通知の担当者が指定されていません。');
+      const message = await sendDirectMessage(env, row.user_id, {
+        embeds: [taskEmbed('担当タスクがキャンセルされました', task, `<@${row.user_id}>`, 0xed4245)],
+        components: [],
       });
       return message.id;
     }
@@ -75,10 +106,7 @@ async function deliver(env: Env, row: OutboxRow): Promise<string> {
           fields: [{ name: '期限', value: formatJst(task.due_at), inline: true }],
           timestamp: new Date().toISOString(),
         }],
-        components: [{
-          type: 1,
-          components: [{ type: 2, style: 1, label: '進捗を報告', custom_id: `task-report:open:${row.reference_id}` }],
-        }],
+        components: [buildReportButton(row.reference_id, '進捗を報告')],
       });
       return message.id;
     }
@@ -122,7 +150,7 @@ async function recordFailure(env: Env, row: OutboxRow, error: unknown): Promise<
   await env.TASK_DB.prepare(
     `UPDATE notification_outbox SET attempts = ?, status = ?, next_attempt_at = ?, last_error = ? WHERE id = ?`,
   ).bind(attempts, final ? 'failed' : 'pending', next, message, row.id).run();
-  if (final && row.user_id && ['assignment_dm', 'report_request_dm', 'overdue_dm'].includes(row.kind)) {
+  if (final && row.user_id && ['assignment_dm', 'cancellation_dm', 'report_request_dm', 'overdue_dm'].includes(row.kind)) {
     await sendChannelMessage(env, {
       content: `<@${row.user_id}>`,
       embeds: [{
@@ -172,4 +200,11 @@ function priorityLabel(priority: string): string {
 
 function mentionId(mention: string): string {
   return mention.slice(2, -1);
+}
+
+export function buildReportButton(roundId: string, label: string) {
+  return {
+    type: 1,
+    components: [{ type: 2, style: 1, label, custom_id: `task-report:open:${roundId}` }],
+  };
 }

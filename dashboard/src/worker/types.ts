@@ -43,7 +43,7 @@ export interface DiscordMember {
 
 export interface OutboxRow {
   id: string;
-  kind: 'assignment_channel' | 'assignment_dm' | 'report_request_dm' | 'overdue_dm' | 'report_channel';
+  kind: 'assignment_channel' | 'assignment_dm' | 'cancellation_channel' | 'cancellation_dm' | 'report_request_dm' | 'overdue_dm' | 'report_channel';
   task_id: string;
   user_id: string | null;
   reference_id: string | null;

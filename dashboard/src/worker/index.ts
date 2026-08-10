@@ -65,6 +65,7 @@ app.patch('/api/tasks/:id', requireCsrf, async (c) => {
 });
 app.post('/api/tasks/:id/cancel', requireCsrf, async (c) => {
   await cancelTask(c.env, c.get('user'), c.req.param('id'));
+  c.executionCtx.waitUntil(processOutbox(c.env));
   return c.json({ ok: true });
 });
 app.post('/api/tasks/:id/archive', requireCsrf, async (c) => {

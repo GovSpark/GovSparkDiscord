@@ -179,10 +179,17 @@ export async function updateTask(env: Env, actor: SessionUser, taskId: string, r
 export async function cancelTask(env: Env, actor: SessionUser, taskId: string): Promise<void> {
   await requireMutableTask(env, taskId);
   const now = new Date().toISOString();
+  const assignees = await env.TASK_DB.prepare(
+    'SELECT user_id FROM task_assignees WHERE task_id = ?',
+  ).bind(taskId).all<{ user_id: string }>();
   await env.TASK_DB.batch([
     env.TASK_DB.prepare(
       `UPDATE tasks SET status = 'cancelled', cancelled_at = ?, updated_at = ? WHERE id = ?`,
     ).bind(now, now, taskId),
+    outbox(env, `cancellation:channel:${taskId}`, 'cancellation_channel', taskId, null, null, now),
+    ...assignees.results.map(({ user_id: userId }) => outbox(
+      env, `cancellation:dm:${taskId}:${userId}`, 'cancellation_dm', taskId, userId, null, now,
+    )),
     audit(env, actor.id, 'task.cancelled', 'task', taskId, {}, now),
   ]);
 }
