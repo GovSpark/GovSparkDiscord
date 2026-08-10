@@ -1,0 +1,25 @@
+name = "govspark-task-dashboard"
+main = "src/worker/index.ts"
+compatibility_date = "2026-08-10"
+
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "TASK_DB"
+database_name = "govspark-tasks"
+database_id = "e0a0d05f-3c85-4169-a263-4753741407ad"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+DISCORD_APPLICATION_ID = "1535943765926346792"
+DISCORD_GUILD_ID = "1489583706086576252"
+DISCORD_ADMIN_ROLE_ID = "1489584168441610290"
+DISCORD_ASSIGNEE_ROLE_IDS = "1501929613561958591,1501929862963658763,1501929275455049798,1504808781115166831,1504814228245188769,1489584168441610290"
+TASK_NOTIFICATION_CHANNEL_ID = "1536235390837719061"
+DASHBOARD_BASE_URL = "https://govspark-task-dashboard.namiyama814.workers.dev"

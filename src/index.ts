@@ -25,6 +25,13 @@ import {
 import { registerGuildCommands } from './commands.js';
 import { buildStatusEmbed } from './status-embed.js';
 import { leaveIfUnauthorized } from './guild-access.js';
+import {
+  buildTaskReportAcceptedEmbed,
+  buildTaskReportModal,
+  parseTaskReportCustomId,
+  readTaskReport,
+  TaskApiClient,
+} from './task-reports.js';
 
 const config = getConfig();
 const client = new Client({
@@ -32,6 +39,7 @@ const client = new Client({
 });
 
 let manager: RecordingManager | undefined;
+const taskApi = config.taskApi ? new TaskApiClient(config.taskApi.baseUrl, config.taskApi.sharedSecret) : undefined;
 let shuttingDown = false;
 const webServer = startWebServer(config.port, () => ({
   discordReady: client.isReady(),
@@ -93,6 +101,17 @@ client.on(Events.GuildCreate, (guild) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton() || interaction.isModalSubmit()) {
+    const taskCustomId = parseTaskReportCustomId(interaction.customId);
+    if (taskCustomId) {
+      await handleTaskReportInteraction(interaction, taskCustomId).catch(async (error) => {
+        console.error('Task report interaction failed', error);
+        const message = error instanceof Error ? error.message : '進捗報告の処理中にエラーが発生しました。';
+        const response = { embeds: [buildStatusEmbed('進捗報告エラー', message, 'error')] };
+        if (interaction.replied || interaction.deferred) await interaction.editReply(response).catch(console.error);
+        else await interaction.reply(response).catch(console.error);
+      });
+      return;
+    }
     const customId = parseMeetingNotesCustomId(interaction.customId);
     if (!customId) return;
     await handleMeetingNotesInteraction(interaction, customId).catch(async (error) => {
@@ -183,6 +202,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
     else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral });
   }
 });
+
+async function handleTaskReportInteraction(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  customId: NonNullable<ReturnType<typeof parseTaskReportCustomId>>,
+): Promise<void> {
+  if (!taskApi) throw new Error('タスク報告機能は現在設定されていません。管理者へ連絡してください。');
+  if (interaction.isButton()) {
+    if (customId.action !== 'open') throw new Error('報告ボタンの情報が正しくありません。');
+    await interaction.showModal(buildTaskReportModal(customId.roundId));
+    return;
+  }
+  if (customId.action !== 'submit') throw new Error('報告フォームの情報が正しくありません。');
+  const report = readTaskReport(interaction);
+  await interaction.deferReply();
+  await taskApi.submitReport({
+    roundId: customId.roundId,
+    userId: interaction.user.id,
+    ...report,
+  });
+  await interaction.editReply({ embeds: [buildTaskReportAcceptedEmbed(report.status)] });
+}
 
 async function handleMeetingNotesInteraction(
   interaction: ButtonInteraction | ModalSubmitInteraction,

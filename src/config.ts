@@ -14,6 +14,10 @@ export interface Config {
   };
   port: number;
   ffmpegPath: string;
+  taskApi?: {
+    baseUrl: string;
+    sharedSecret: string;
+  };
 }
 
 function required(name: string): string {
@@ -27,6 +31,12 @@ export function getConfig(): Config {
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error('環境変数 PORT は 1～65535 の整数で指定してください。');
   }
+  const taskApiBaseUrl = process.env.TASK_API_BASE_URL?.trim().replace(/\/$/, '');
+  const taskApiSharedSecret = process.env.TASK_API_SHARED_SECRET?.trim();
+  if (Boolean(taskApiBaseUrl) !== Boolean(taskApiSharedSecret)) {
+    throw new Error('TASK_API_BASE_URL と TASK_API_SHARED_SECRET は両方設定するか、両方省略してください。');
+  }
+
   return {
     discordToken: required('DISCORD_TOKEN'),
     applicationId: required('DISCORD_APPLICATION_ID'),
@@ -41,5 +51,8 @@ export function getConfig(): Config {
     },
     port,
     ffmpegPath: process.env.FFMPEG_PATH?.trim() || 'ffmpeg',
+    taskApi: taskApiBaseUrl && taskApiSharedSecret
+      ? { baseUrl: taskApiBaseUrl, sharedSecret: taskApiSharedSecret }
+      : undefined,
   };
 }

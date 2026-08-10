@@ -1,6 +1,7 @@
 # GovSpark Discord Recorder
 
 Discord のボイスチャンネルを録音し、MP3 を Cloudflare R2 に保存する TypeScript 製 Bot です。
+同じリポジトリの`dashboard/`には、Discord連携タスク管理ダッシュボードも含まれています。
 
 ## 動作
 
@@ -11,6 +12,7 @@ Discord のボイスチャンネルを録音し、MP3 を Cloudflare R2 に保�
 - 音声を単一 MP3 にミックスして Cloudflare R2 へアップロードし、指定テキストチャンネルに公開 URL を投稿します。
 - 録音開始者へDMを送り、会議の概要・決定事項・次の対応を結果Embedへ追記できます。
 - 同時録音は 1 件だけです。R2のライフサイクルルールで録音を90日後に自動削除します。
+- タスク期限後に届くDMから「未着手・実行中・完了」と詳細を報告できます。
 
 ## セットアップ
 
@@ -21,7 +23,13 @@ Discord のボイスチャンネルを録音し、MP3 を Cloudflare R2 に保�
 5. `npm install`を実行します。
 6. `npm run dev`（開発）または`npm run build && npm start`（本番）を実行します。起動時に`/start`と`/stop`が対象サーバーへ自動登録されます。
 
-Bot に VC の閲覧・接続・発言、結果チャンネルへの送信・メッセージ履歴を読む権限を付与してください。この Bot が使う Gateway Intent に Privileged Intent の有効化は不要です。
+Bot に VC の閲覧・接続・発言、結果チャンネルへの送信・メッセージ履歴を読む権限を付与してください。タスクダッシュボードを利用する場合は、Discord Developer PortalでServer Members Intentも有効にしてください。
+
+## タスク管理ダッシュボード
+
+Cloudflare Workers + D1で管理画面を追加できます。Discord OAuthで本人確認を行い、「統括」ロールを持つユーザーだけがアクセスできます。タスク割当時は指定チャンネルと担当者DMへ通知し、期限後の報告もDiscord DMから受け付けます。
+
+CloudflareおよびDiscord側の設定方法は[dashboard/README.md](dashboard/README.md)を参照してください。タスク機能は録音機能から分離されており、Cloudflare側の障害やタスク環境変数の未設定を理由に録音Botが停止することはありません。
 
 ## Render
 
